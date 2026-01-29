@@ -12,8 +12,8 @@ class MessageItem(BaseModel):
     """Single message in conversation."""
 
     sender: Literal["scammer", "user"]
-    text: str
-    timestamp: str
+    text: str = Field(..., max_length=10000)
+    timestamp: str = Field(..., min_length=1, max_length=50)
 
 
 class MetadataItem(BaseModel):
@@ -27,10 +27,10 @@ class MetadataItem(BaseModel):
 class HoneypotRequest(BaseModel):
     """Incoming honeypot API request."""
 
-    session_id: str = Field(..., alias="sessionId")
+    session_id: str = Field(..., alias="sessionId", min_length=1, max_length=128)
     message: MessageItem
     conversation_history: list[MessageItem] = Field(
-        default_factory=list, alias="conversationHistory"
+        default_factory=list, alias="conversationHistory", max_length=50
     )
     metadata: Optional[MetadataItem] = None
 

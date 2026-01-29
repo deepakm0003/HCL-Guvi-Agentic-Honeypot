@@ -115,7 +115,7 @@ def generate_reply(
         return AgentResponse(reply=reply, engagement_score=score)
 
     try:
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = OpenAI(api_key=settings.openai_api_key, timeout=20.0)
         user_prompt = f"""Conversation so far:
 {conv_text}
 

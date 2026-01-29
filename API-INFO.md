@@ -19,6 +19,7 @@ https://honeypot-api-production.up.railway.app/honeypot
 |----------|--------|-------------|
 | `/` | GET | Root - API info (no 404) |
 | `/health` | GET | Health check |
+| `/ready` | GET | Evaluation readiness (fast, no auth) |
 | `/honeypot` | POST | Main honeypot API |
 
 **Note:** Visit `https://honeypot-api-production.up.railway.app/` (root) or `/health` to verify the API is up. The base URL without path previously returned 404.

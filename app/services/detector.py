@@ -51,7 +51,7 @@ def _llm_classify(text: str, conversation_context: str) -> tuple[bool, float, st
         return kw_score >= 0.5, kw_score, "Keyword-based detection (no LLM)"
 
     try:
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = OpenAI(api_key=settings.openai_api_key, timeout=15.0)
         prompt = f"""You are a scam/fraud intent classifier. Analyze the following message for scam or fraudulent intent (bank fraud, UPI fraud, phishing, fake offers, impersonation).
 
 Message to analyze:

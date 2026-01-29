@@ -119,7 +119,7 @@ def _llm_extract(conversation_text: str) -> Optional[dict[str, Any]]:
         return None
 
     try:
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = OpenAI(api_key=settings.openai_api_key, timeout=15.0)
         prompt = f"""Extract scam-related intelligence from this conversation. Return ONLY valid JSON with these exact keys (arrays of strings):
 - bankAccounts: bank account numbers, masked formats like XXXX-XXXX-1234
 - upiIds: UPI IDs (handle@bank format)

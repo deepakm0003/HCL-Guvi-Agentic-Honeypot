@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Response
     max_response_time_seconds: float = 3.0
 
+    # Limits (evaluation readiness)
+    max_request_body_size: int = 100_000  # 100KB
+
 
 @lru_cache
 def get_settings() -> Settings:
