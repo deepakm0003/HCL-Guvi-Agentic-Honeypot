@@ -61,10 +61,8 @@ async def root() -> dict[str, str]:
     return {
         "service": "Agentic Honeypot API",
         "status": "ok",
-        "endpoints": {
-            "honeypot": "POST /honeypot",
-            "health": "GET /health",
-        },
+        "honeypot": "POST /honeypot",
+        "health": "GET /health",
     }
 
 
