@@ -135,7 +135,7 @@ Return ONLY the JSON object, no other text."""
         response = client.chat.completions.create(
             model=settings.openai_extraction_model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
+            max_tokens=300,
             temperature=0,
         )
         content = (response.choices[0].message.content or "").strip()

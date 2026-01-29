@@ -1,5 +1,10 @@
 # PowerShell script to test the Honeypot API
 # Run: .\test-honeypot.ps1
+# Or test production: .\test-honeypot.ps1 -BaseUrl "https://honeypot-api-production.up.railway.app"
+
+param(
+    [string]$BaseUrl = "http://localhost:8000"
+)
 
 $headers = @{
     "x-api-key"     = "my-secret-honeypot-key-0003"
@@ -21,4 +26,4 @@ $body = @{
     }
 } | ConvertTo-Json -Depth 5
 
-Invoke-RestMethod -Uri "http://localhost:8000/honeypot" -Method Post -Headers $headers -Body $body
+Invoke-RestMethod -Uri "$BaseUrl/honeypot" -Method Post -Headers $headers -Body $body

@@ -67,7 +67,7 @@ REASON: one short sentence explaining why"""
         response = client.chat.completions.create(
             model=settings.openai_detection_model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=150,
+            max_tokens=80,
             temperature=0,
         )
         content = (response.choices[0].message.content or "").strip()
@@ -103,6 +103,14 @@ def detect_scam(text: str, conversation_history: list[dict]) -> ScamDetectionRes
         return ScamDetectionResult(is_scam=False, confidence=0.0, reason="Empty message")
 
     kw_score = _keyword_score(sanitized)
+    # Skip LLM if keyword score is very high - faster response
+    settings = get_settings()
+    if kw_score >= 0.6 and kw_score >= settings.scam_confidence_threshold:
+        return ScamDetectionResult(
+            is_scam=True,
+            confidence=kw_score,
+            reason="High keyword match - scam indicators detected",
+        )
     context = " ".join(m.get("text", "") for m in conversation_history[-5:])
     is_scam_llm, llm_conf, reason = _llm_classify(sanitized, context)
 

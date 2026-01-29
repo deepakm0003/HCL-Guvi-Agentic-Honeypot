@@ -3,14 +3,13 @@
 import time
 from typing import Optional
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.models import HoneypotRequest, HoneypotResponse
 from app.services.agent import generate_reply
 from app.services.detector import detect_scam
-from app.services.extractor import extract_intelligence
 from app.services.lifecycle import check_and_end_if_needed, should_end_engagement
 from app.services.memory import create_session, load_session, save_session
 from app.utils.logging import get_logger, setup_logging
@@ -56,9 +55,51 @@ def _build_agent_notes(
     return "; ".join(parts[-5:]) if len(parts) > 5 else "; ".join(parts)
 
 
+@app.get("/")
+async def root() -> dict[str, str]:
+    """Root route - prevents 404 when visiting base URL."""
+    return {
+        "service": "Agentic Honeypot API",
+        "status": "ok",
+        "endpoints": {
+            "honeypot": "POST /honeypot",
+            "health": "GET /health",
+        },
+    }
+
+
+def _run_extraction_and_lifecycle(
+    session_id: str,
+    history: list[dict],
+    latest_text: str,
+    existing_intel,
+    agent_notes: str,
+    scam_detected: bool,
+) -> None:
+    """Background task: extract intelligence, update memory, check lifecycle."""
+    from app.services.extractor import extract_intelligence
+
+    memory = load_session(session_id)
+    if memory is None:
+        return
+    memory.extracted_intelligence = extract_intelligence(
+        conversation_history=history,
+        latest_message=latest_text,
+        existing=existing_intel,
+    )
+    intel_count = memory.extracted_intelligence.total_items()
+    memory.agent_notes = _build_agent_notes(
+        memory.agent_notes, "", latest_text, intel_count
+    )
+    if should_end_engagement(memory):
+        check_and_end_if_needed(memory)
+    save_session(memory)
+
+
 @app.post("/honeypot", response_model=HoneypotResponse)
 async def honeypot_endpoint(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_api_key: Optional[str] = Header(None, alias="x-api-key"),
 ) -> HoneypotResponse:
     """Main honeypot endpoint - accepts message, detects scam, engages agent."""
@@ -139,22 +180,6 @@ async def honeypot_endpoint(
         )
         reply = agent_response.reply
 
-        # Extract intelligence
-        memory.extracted_intelligence = extract_intelligence(
-            conversation_history=history_as_dicts[:-1],
-            latest_message=sanitized_text,
-            existing=memory.extracted_intelligence,
-        )
-
-        # Update agent notes with extraction
-        intel_count = memory.extracted_intelligence.total_items()
-        memory.agent_notes = _build_agent_notes(
-            memory.agent_notes,
-            "",
-            sanitized_text,
-            intel_count,
-        )
-
         # Add agent reply to history
         history_as_dicts.append({
             "sender": "user",
@@ -164,9 +189,16 @@ async def honeypot_endpoint(
         memory.conversation_history = history_as_dicts
         memory.message_count = len(history_as_dicts)
 
-        # Check lifecycle - end if conditions met
-        if should_end_engagement(memory):
-            check_and_end_if_needed(memory)
+        # Run extraction + lifecycle in background (faster response)
+        background_tasks.add_task(
+            _run_extraction_and_lifecycle,
+            session_id,
+            history_as_dicts[:-1],
+            sanitized_text,
+            memory.extracted_intelligence,
+            memory.agent_notes,
+            memory.scam_detected,
+        )
 
     save_session(memory)
 

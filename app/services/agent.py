@@ -131,8 +131,8 @@ Generate your next response as the confused but cooperative Indian user. Extract
                 {"role": "system", "content": AGENT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=200,
-            temperature=0.7,
+            max_tokens=120,
+            temperature=0.6,
         )
         content = (response.choices[0].message.content or "").strip()
         # Parse JSON from response
