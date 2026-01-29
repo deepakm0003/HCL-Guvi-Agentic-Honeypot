@@ -1,8 +1,9 @@
 """Pydantic models for request/response and internal data structures."""
 
+from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Request Models ---
@@ -12,8 +13,32 @@ class MessageItem(BaseModel):
     """Single message in conversation."""
 
     sender: Literal["scammer", "user"]
-    text: str = Field(..., max_length=10000)
-    timestamp: str = Field(..., min_length=1, max_length=50)
+    text: str = Field(default="", max_length=10000)
+    timestamp: str = Field(default="", max_length=50)
+
+    @field_validator("sender", mode="before")
+    @classmethod
+    def normalize_sender(cls, v: Any) -> str:
+        """Accept case-insensitive sender."""
+        if isinstance(v, str):
+            return v.lower().strip()
+        return v
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def normalize_text(cls, v: Any) -> str:
+        """Handle None or missing text."""
+        if v is None:
+            return ""
+        return str(v) if v else ""
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def normalize_timestamp(cls, v: Any) -> str:
+        """Handle None or empty timestamp."""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        return str(v)
 
 
 class MetadataItem(BaseModel):
@@ -25,17 +50,54 @@ class MetadataItem(BaseModel):
 
 
 class HoneypotRequest(BaseModel):
-    """Incoming honeypot API request."""
+    """Incoming honeypot API request - tolerant of GUVI tester format."""
 
-    session_id: str = Field(..., alias="sessionId", min_length=1, max_length=128)
+    session_id: str = Field(
+        default="eval-session",
+        alias="sessionId",
+        min_length=1,
+        max_length=128,
+    )
     message: MessageItem
     conversation_history: list[MessageItem] = Field(
         default_factory=list, alias="conversationHistory", max_length=50
     )
     metadata: Optional[MetadataItem] = None
 
+    @field_validator("conversation_history", mode="before")
+    @classmethod
+    def normalize_conversation_history(cls, v: Any) -> list:
+        """Handle null or missing conversationHistory."""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        return []
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def normalize_session_id(cls, v: Any) -> str:
+        """Handle sessionId - allow alphanumeric, hyphen, underscore, dot."""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "eval-session"
+        s = str(v).strip()
+        return s if s else "eval-session"
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def normalize_message(cls, v: Any) -> dict:
+        """Handle message as string (GUVI tester may send simplified format)."""
+        if isinstance(v, str):
+            return {
+                "sender": "scammer",
+                "text": v,
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+        return v
+
     class Config:
         populate_by_name = True
+        extra = "ignore"  # Ignore unknown fields from tester
 
 
 # --- Response Models ---

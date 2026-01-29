@@ -1,5 +1,6 @@
 """FastAPI application - Agentic Honeypot API."""
 
+import json as json_module
 import time
 import uuid
 from typing import Optional
@@ -170,7 +171,15 @@ async def honeypot_endpoint(
             except ValueError:
                 pass
 
-        body = await request.json()
+        raw_body = await request.body()
+        if not raw_body:
+            return _error_response("Request body is required")
+        try:
+            body = json_module.loads(raw_body)
+        except json_module.JSONDecodeError:
+            return _error_response("Invalid JSON in request body")
+        if not isinstance(body, dict):
+            return _error_response("Request body must be JSON object")
         honeypot_req = HoneypotRequest(**body)
         session_id = honeypot_req.session_id
     except (RequestValidationError, ValidationError) as e:

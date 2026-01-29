@@ -27,10 +27,10 @@ def sanitize_text(text: str, max_length: int = 10000) -> str:
 
 
 def validate_session_id(session_id: str) -> bool:
-    """Validate session ID format."""
+    """Validate session ID format - allow alphanumeric, hyphen, underscore, dot."""
     if not session_id or len(session_id) > 128:
         return False
-    return bool(re.match(r"^[a-zA-Z0-9\-_]+$", session_id))
+    return bool(re.match(r"^[a-zA-Z0-9\-_.]+$", session_id))
 
 
 def validate_message_text(text: str) -> bool:
