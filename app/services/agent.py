@@ -4,9 +4,8 @@ import json
 import re
 from typing import Optional
 
-from openai import OpenAI
-
 from app.config import get_settings
+from app.core.clients import get_openai_client
 from app.models import AgentResponse, ExtractedIntelligence
 from app.utils.logging import get_logger
 from app.utils.validators import sanitize_text
@@ -85,6 +84,9 @@ def _fallback_reply(latest: str, message_count: int) -> str:
         "Let me see... Can you send the link again?",
         "Ok I'll do it. But is this safe?",
         "Acha, give me 2 minutes. I need to check my app first.",
+        "Which bank is this from? I want to verify.",
+        "I'm worried. Can you tell me more?",
+        "Ok, I'll share. But please confirm it's official.",
     ]
     idx = message_count % len(fallbacks)
     return fallbacks[idx]
@@ -115,7 +117,13 @@ def generate_reply(
         return AgentResponse(reply=reply, engagement_score=score)
 
     try:
-        client = OpenAI(api_key=settings.openai_api_key, timeout=20.0)
+        client = get_openai_client()
+        if not client:
+            reply = _fallback_reply(sanitized, message_count)
+            return AgentResponse(
+                reply=reply,
+                engagement_score=_compute_engagement_score(reply, message_count, intel_count, True),
+            )
         user_prompt = f"""Conversation so far:
 {conv_text}
 

@@ -3,9 +3,8 @@
 import re
 from typing import Optional
 
-from openai import OpenAI
-
 from app.config import get_settings
+from app.core.clients import get_openai_client
 from app.models import ScamDetectionResult
 from app.utils.logging import get_logger
 from app.utils.validators import sanitize_text
@@ -44,14 +43,11 @@ def _keyword_score(text: str) -> float:
 
 def _llm_classify(text: str, conversation_context: str) -> tuple[bool, float, str]:
     """Use LLM to classify scam intent. Returns (is_scam, confidence, reason)."""
-    settings = get_settings()
-    if not settings.openai_api_key:
-        logger.warning("OPENAI_API_KEY not set, using keyword-only detection")
-        kw_score = _keyword_score(text)
-        return kw_score >= 0.5, kw_score, "Keyword-based detection (no LLM)"
-
     try:
-        client = OpenAI(api_key=settings.openai_api_key, timeout=15.0)
+        client = get_openai_client()
+        if not client:
+            kw_score = _keyword_score(text)
+            return kw_score >= 0.5, kw_score, "Keyword-based detection (no LLM)"
         prompt = f"""You are a scam/fraud intent classifier. Analyze the following message for scam or fraudulent intent (bank fraud, UPI fraud, phishing, fake offers, impersonation).
 
 Message to analyze:

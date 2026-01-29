@@ -4,9 +4,8 @@ import json
 import re
 from typing import Any, Optional
 
-from openai import OpenAI
-
 from app.config import get_settings
+from app.core.clients import get_openai_client
 from app.models import ExtractedIntelligence
 from app.utils.logging import get_logger
 from app.utils.validators import (
@@ -119,7 +118,9 @@ def _llm_extract(conversation_text: str) -> Optional[dict[str, Any]]:
         return None
 
     try:
-        client = OpenAI(api_key=settings.openai_api_key, timeout=15.0)
+        client = get_openai_client()
+        if not client:
+            return None
         prompt = f"""Extract scam-related intelligence from this conversation. Return ONLY valid JSON with these exact keys (arrays of strings):
 - bankAccounts: bank account numbers, masked formats like XXXX-XXXX-1234
 - upiIds: UPI IDs (handle@bank format)

@@ -34,8 +34,8 @@ def validate_session_id(session_id: str) -> bool:
 
 
 def validate_message_text(text: str) -> bool:
-    """Validate message text."""
-    if not text or len(text) > 50000:
+    """Validate message text - allow empty for robustness."""
+    if text is None or len(text) > 50000:
         return False
     return True
 

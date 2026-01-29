@@ -1,10 +1,12 @@
 """FastAPI application - Agentic Honeypot API."""
 
 import time
+import uuid
 from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -13,19 +15,45 @@ from app.models import HoneypotRequest, HoneypotResponse
 from app.services.agent import generate_reply
 from app.services.detector import detect_scam
 from app.services.lifecycle import check_and_end_if_needed, should_end_engagement
-from app.services.memory import create_session, load_session, save_session
+from app.services.memory import check_redis_available, create_session, load_session, save_session
 from app.utils.logging import get_logger, setup_logging
 from app.utils.validators import sanitize_text, validate_message_text, validate_session_id
 
 setup_logging()
 logger = get_logger(__name__)
 
-
 app = FastAPI(
     title="Agentic Honeypot API",
     description="AI-powered honeypot for scam detection and intelligence extraction",
     version="1.0.0",
 )
+
+# CORS - allow evaluation from any origin
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def request_middleware(request: Request, call_next):
+    """Add request ID and timing for traceability."""
+    request_id = str(uuid.uuid4())[:8]
+    request.state.request_id = request_id
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - start
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time"] = f"{elapsed:.3f}s"
+    if elapsed > 5.0:
+        logger.warning(
+            "Slow request",
+            extra={"extra_data": {"path": request.url.path, "elapsed": elapsed, "request_id": request_id}},
+        )
+    return response
 
 
 def _verify_api_key(api_key: Optional[str]) -> None:
@@ -123,6 +151,7 @@ async def honeypot_endpoint(
     """Main honeypot endpoint - evaluation-ready, always returns {status, reply}."""
     start_time = time.perf_counter()
     settings = get_settings()
+    session_id = "unknown"
 
     # Auth - 401 for invalid key (evaluation validates this)
     try:
@@ -143,6 +172,7 @@ async def honeypot_endpoint(
 
         body = await request.json()
         honeypot_req = HoneypotRequest(**body)
+        session_id = honeypot_req.session_id
     except (RequestValidationError, ValidationError) as e:
         logger.warning("Validation error", extra={"extra_data": {"errors": str(e)}})
         return _error_response("Invalid request format")
@@ -150,7 +180,6 @@ async def honeypot_endpoint(
         logger.warning("Invalid request body", extra={"extra_data": {"error": str(e)}})
         return _error_response("Invalid request format")
 
-    session_id = honeypot_req.session_id
     if not validate_session_id(session_id):
         return _error_response("Invalid session ID")
 
@@ -253,9 +282,14 @@ async def honeypot_endpoint(
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    """Health check endpoint - fast, no external dependencies."""
-    return {"status": "ok", "service": "honeypot"}
+async def health() -> dict:
+    """Health check - fast, includes dependency status."""
+    redis_ok = check_redis_available()
+    return {
+        "status": "ok",
+        "service": "honeypot",
+        "redis": "connected" if redis_ok else "fallback",
+    }
 
 
 @app.exception_handler(RequestValidationError)
