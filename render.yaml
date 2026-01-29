@@ -1,0 +1,15 @@
+# Render.com Blueprint - Agentic Honeypot API
+# Set API_KEY and OPENAI_API_KEY in Render Dashboard > Environment
+services:
+  - type: web
+    name: honeypot-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+    healthCheckPath: /health
