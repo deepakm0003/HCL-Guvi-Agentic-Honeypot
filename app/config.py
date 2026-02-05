@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     redis_session_ttl: int = 3600  # 1 hour in seconds
 
-    # Scam detection
-    scam_confidence_threshold: float = 0.7
+    # Scam detection - lowered for better detection
+    scam_confidence_threshold: float = 0.5
 
     # Lifecycle
     max_messages_before_end: int = 12

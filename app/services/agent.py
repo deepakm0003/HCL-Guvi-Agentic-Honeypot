@@ -162,26 +162,36 @@ def generate_reply(
                 reply=reply,
                 engagement_score=_compute_engagement_score(reply, message_count, intel_count, True),
             )
+        # Get previous replies to avoid repetition
+        previous_replies = [m.get("text", "") for m in conversation_history if m.get("sender") == "user"]
+        prev_context = "\n".join(previous_replies[-3:]) if previous_replies else "No previous replies"
+        
         user_prompt = f"""Conversation so far:
 {conv_text}
+
+Previous replies you made (AVOID repeating these):
+{prev_context}
 
 Current extracted intelligence: {extracted_intelligence.total_items()} items so far.
 Message count: {message_count}
 {f'Agent notes: {agent_notes}' if agent_notes else ''}
 
-IMPORTANT: Generate a NATURAL, CONVERSATIONAL response (2-3 sentences, 30-80 words minimum). 
+CRITICAL: Generate a UNIQUE, NATURAL, CONVERSATIONAL response (2-3 sentences, 30-80 words minimum).
+- DO NOT repeat your previous responses - be creative and varied
 - Show genuine worry and confusion
-- Ask 1-2 natural questions
-- Use Indian English phrases naturally
+- Ask 1-2 DIFFERENT natural questions than before
+- Use Indian English phrases naturally: "yaar", "acha", "ok ok", "bhai"
 - Be conversational, not robotic
 - Express concern about account security
 - Gradually show willingness to cooperate
+- Vary your approach: sometimes ask about bank, sometimes about safety, sometimes express confusion
 
-Examples of GOOD responses:
+Examples of GOOD varied responses:
 - "Yaar, I'm really worried now. Which bank sent this message? I didn't receive any notification in my banking app. Can you tell me more about why my account will be blocked?"
 - "Ok ok, I understand you're saying my account will be blocked. But I want to make sure this is safe and official. Which bank are you from? And can you tell me what I need to do exactly?"
+- "I'm really confused and scared. Can you please tell me which bank you're representing? I want to verify this is legitimate before I do anything. Also, why do you need my account number?"
 
-Generate your response now. Return ONLY the JSON object."""
+Generate a UNIQUE response that's different from your previous ones. Return ONLY the JSON object."""
 
         response = client.chat.completions.create(
             model=settings.openai_model,
@@ -190,7 +200,7 @@ Generate your response now. Return ONLY the JSON object."""
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=200,
-            temperature=0.75,
+            temperature=0.85,  # Higher temperature for more variation
         )
         content = (response.choices[0].message.content or "").strip()
         # Parse JSON from response

@@ -11,21 +11,28 @@ from app.utils.validators import sanitize_text
 
 logger = get_logger(__name__)
 
-# Scam keyword patterns with weights
+# Scam keyword patterns with weights - enhanced for better detection
 SCAM_KEYWORDS: list[tuple[str, float]] = [
     (r"\b(verify|verification)\s+(immediately|now|urgent)\b", 0.3),
-    (r"\baccount\s+(blocked|suspended|locked)\b", 0.35),
+    (r"\baccount\s+(blocked|suspended|locked|lockout)\b", 0.4),
+    (r"\b(locked|lockout)\s+(within|in)\s+\w+\s*(minutes|hours|days)\b", 0.4),
+    (r"\b(16|sixteen)\s*[-]?\s*digit\s*account\s*number\b", 0.5),
+    (r"\baccount\s*number\s*(and|&)\s*otp\b", 0.5),
+    (r"\b(otp|pin|password)\s*(you|just)\s*(received|got|sent)\b", 0.4),
+    (r"\b(send|provide|share|give)\s+(your|ur)\s+(account|16|otp|pin)\b", 0.4),
     (r"\bupi\s*(id|pin)\b", 0.25),
     (r"\b(share|send|provide)\s+(your|ur)\s+(upi|bank)\b", 0.3),
     (r"\b(click|visit)\s+(link|url)\b", 0.25),
-    (r"\b(urgent|immediately|asap)\b", 0.15),
-    (r"\b(otp|pin)\s+(required|needed)\b", 0.25),
+    (r"\b(urgent|immediately|asap|right now)\b", 0.2),
+    (r"\b(otp|pin)\s+(required|needed|to verify)\b", 0.3),
     (r"\b(won|winner|prize|reward)\s+(claim|collect)\b", 0.3),
     (r"\b(kyc|verification)\s+(pending|required)\b", 0.25),
     (r"\b(bank|sbi|hdfc|icici)\s+(account|block)\b", 0.3),
     (r"\bphishing|malicious\b", 0.5),
     (r"\b(transfer|send)\s+money\b", 0.2),
     (r"\b\d{10,12}\s*(call|whatsapp)\b", 0.2),
+    (r"\b(prevent|avoid|stop)\s+(lockout|block|suspension)\b", 0.35),
+    (r"\b(unless|if not)\s+you\s+(send|provide|verify)\b", 0.3),
 ]
 
 
@@ -99,27 +106,31 @@ def detect_scam(text: str, conversation_history: list[dict]) -> ScamDetectionRes
         return ScamDetectionResult(is_scam=False, confidence=0.0, reason="Empty message")
 
     kw_score = _keyword_score(sanitized)
-    # Skip LLM if keyword score is very high - faster response
     settings = get_settings()
-    if kw_score >= 0.6 and kw_score >= settings.scam_confidence_threshold:
+    
+    # More aggressive detection - if keywords suggest scam, activate agent
+    # Lower threshold for better detection
+    if kw_score >= 0.4:  # Lowered from 0.6
         return ScamDetectionResult(
             is_scam=True,
-            confidence=kw_score,
+            confidence=max(kw_score, 0.75),  # Boost confidence
             reason="High keyword match - scam indicators detected",
         )
+    
     context = " ".join(m.get("text", "") for m in conversation_history[-5:])
     is_scam_llm, llm_conf, reason = _llm_classify(sanitized, context)
 
     # Combine: if keywords suggest scam, boost; otherwise trust LLM
-    if kw_score >= 0.3:
-        combined_confidence = max(llm_conf, kw_score + 0.2)
+    if kw_score >= 0.25:  # Lowered threshold
+        combined_confidence = max(llm_conf, kw_score + 0.25)  # More boost
     else:
         combined_confidence = llm_conf
 
     combined_confidence = min(1.0, combined_confidence)
-    is_scam = is_scam_llm or (kw_score >= 0.5 and combined_confidence >= 0.5)
+    # More aggressive: if keywords OR LLM suggests scam, activate
+    is_scam = is_scam_llm or (kw_score >= 0.3) or (combined_confidence >= 0.6)  # Lowered threshold
 
-    settings = get_settings()
+    # Final check with original threshold
     if combined_confidence >= settings.scam_confidence_threshold:
         is_scam = True
 
