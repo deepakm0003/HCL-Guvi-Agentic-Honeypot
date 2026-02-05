@@ -1,6 +1,6 @@
 """Pydantic models for request/response and internal data structures."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -35,8 +35,17 @@ class MessageItem(BaseModel):
     @field_validator("timestamp", mode="before")
     @classmethod
     def normalize_timestamp(cls, v: Any) -> str:
-        """Handle None or empty timestamp."""
-        if v is None or (isinstance(v, str) and not v.strip()):
+        """Handle None, empty, or Unix timestamp (number)."""
+        if v is None:
+            return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        if isinstance(v, (int, float)):
+            # Unix timestamp in milliseconds or seconds
+            ts = int(v)
+            if ts > 1e12:  # milliseconds
+                ts = ts // 1000
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if isinstance(v, str) and not v.strip():
             return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         return str(v)
 

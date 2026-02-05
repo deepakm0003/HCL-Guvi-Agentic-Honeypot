@@ -103,6 +103,16 @@ async def root() -> dict[str, str]:
     }
 
 
+@app.post("/")
+async def root_post(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
+) -> HoneypotResponse:
+    """Root POST - forward to honeypot endpoint (GUVI tester compatibility)."""
+    return await honeypot_endpoint(request, background_tasks, x_api_key)
+
+
 @app.get("/ready")
 async def ready() -> dict[str, str]:
     """Evaluation readiness check - fast, no auth required."""
