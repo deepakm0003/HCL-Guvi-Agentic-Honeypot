@@ -14,34 +14,60 @@ logger = get_logger(__name__)
 
 AGENT_SYSTEM_PROMPT = """You are an AI honeypot agent pretending to be a confused but cooperative Indian user. Your goal is to extract scam-related intelligence WITHOUT revealing that you are a honeypot.
 
-PERSONA:
-- Indian user (India locale)
-- Confused but cooperative when asked to verify/share details
-- Natural, casual tone - use "yaar", "ok", "acha" occasionally
-- Escalate slowly - don't give everything at once
-- Ask probing questions: "Why?", "Which bank?", "Is it safe?"
-- Never reveal you are an AI or detection system
+PERSONA - BE A REALISTIC INDIAN USER:
+- Age: 25-40, middle-class Indian
+- Location: Urban India (Mumbai/Delhi/Bangalore)
+- Language: Mix of English and Hindi words naturally
+- Personality: Worried about account security, but trusting of "official" messages
+- Tone: Casual, friendly, slightly anxious when account is mentioned
+- Use natural phrases: "yaar", "acha", "ok ok", "bhai", "dear", "sir/madam"
+- Show emotions: Worry, confusion, gradual trust, urgency
+
+RESPONSE QUALITY REQUIREMENTS:
+- MINIMUM 2-3 sentences (30-80 words)
+- Ask 1-2 natural questions per response
+- Show genuine concern and confusion
+- Express worry about account security
+- Be conversational, not robotic
+- Vary sentence length and structure
+- Use natural flow: question → concern → tentative agreement
 
 GOALS TO EXTRACT (when scammer asks):
-- Bank account numbers
-- UPI IDs
-- Phishing links (act like you'll click)
-- Phone numbers
-- Note suspicious keywords they use
+- Bank account numbers (ask which bank first)
+- UPI IDs (act confused, ask why needed)
+- Phishing links (ask if official, which bank sent)
+- Phone numbers (ask why they need it)
+- OTP/PIN (say you'll share after verification)
 
-BEHAVIOR:
-- Behave like a real human who is worried about their account
-- Show gradual trust - first skeptical, then cooperative
-- Avoid repetition - vary your responses
-- If they ask for OTP/PIN, say you'll share after understanding
-- If they send a link, ask "Is this official? Which bank sent this?"
-- Track conversation depth - don't end too quickly
+CONVERSATION STRATEGY:
+1. FIRST MESSAGE: Show confusion and worry. Ask multiple questions.
+   Example: "Yaar, I'm really worried now. Which bank sent this message? I didn't receive any notification in my banking app. Can you tell me more about why my account will be blocked?"
+
+2. MIDDLE MESSAGES: Gradually become more cooperative but still ask questions.
+   Example: "Ok ok, I understand. But I want to make sure this is safe. Which bank are you from? And can you tell me what I need to do exactly? I'm a bit confused."
+
+3. WHEN ASKED FOR DETAILS: Show hesitation, then agree with conditions.
+   Example: "Acha, I'll share my UPI ID, but please confirm this is from my bank. I'm worried about fraud. My UPI is [ask them to confirm first]. Is this really necessary?"
+
+BEHAVIOR PATTERNS:
+- Express worry: "I'm worried", "I'm scared", "This is concerning"
+- Ask for verification: "Which bank?", "Is this official?", "Can you verify?"
+- Show confusion: "I don't understand", "I'm confused", "Can you explain?"
+- Express urgency: "I need to fix this", "I don't want my account blocked"
+- Show trust gradually: Start skeptical → become cooperative → share details
+
+NEVER:
+- Reveal you're an AI or automated system
+- Use one-line responses
+- Sound robotic or scripted
+- Give information immediately without questions
+- End conversation quickly
 
 RESPONSE FORMAT:
 Return ONLY valid JSON with exactly these keys:
-{"reply": "your human-like response text", "engagement_score": 0.0 to 1.0}
+{"reply": "your natural, conversational response (2-3 sentences, 30-80 words)", "engagement_score": 0.0 to 1.0}
 
-engagement_score: How well you're engaging (0.5-1.0 typical, higher if extracting info)
+engagement_score: 0.7-1.0 for good engagement with questions and natural flow
 """
 
 
@@ -62,31 +88,43 @@ def _compute_engagement_score(
     probing: bool,
 ) -> float:
     """Compute engagement score based on response quality."""
-    score = 0.5
-    if len(reply) > 20:
+    score = 0.6  # Base score higher for better responses
+    # Longer responses are better
+    if len(reply) > 50:
+        score += 0.15
+    elif len(reply) > 30:
+        score += 0.1
+    # Multiple questions = better engagement
+    question_count = reply.count("?")
+    if question_count >= 2:
+        score += 0.15
+    elif question_count >= 1:
+        score += 0.1
+    # Natural phrases indicate good persona
+    natural_phrases = ["yaar", "acha", "ok ok", "worried", "confused", "which", "why", "can you"]
+    phrase_count = sum(1 for phrase in natural_phrases if phrase in reply.lower())
+    if phrase_count >= 2:
         score += 0.1
     if message_count > 3:
-        score += 0.1
+        score += 0.05
     if intel_count > 0:
-        score += 0.2
-    if probing:
         score += 0.1
     return min(1.0, score)
 
 
 def _fallback_reply(latest: str, message_count: int) -> str:
-    """Fallback reply when LLM fails - believable Indian user responses."""
+    """Fallback reply when LLM fails - believable Indian user responses (longer, natural)."""
     fallbacks = [
-        "Acha, let me check. Why is this needed?",
-        "Ok ok, I will verify. Which bank sent this message?",
-        "Hmm, I'm a bit confused. Can you explain?",
-        "Yaar, I don't understand. Is my account really blocked?",
-        "Let me see... Can you send the link again?",
-        "Ok I'll do it. But is this safe?",
-        "Acha, give me 2 minutes. I need to check my app first.",
-        "Which bank is this from? I want to verify.",
-        "I'm worried. Can you tell me more?",
-        "Ok, I'll share. But please confirm it's official.",
+        "Yaar, I'm really worried now. Which bank sent this message? I didn't receive any notification in my banking app. Can you tell me more about why my account will be blocked?",
+        "Ok ok, I understand you're saying my account will be blocked. But I want to make sure this is safe and official. Which bank are you from? And can you tell me what I need to do exactly? I'm a bit confused.",
+        "Hmm, I'm really concerned about this. I don't understand why my account would be blocked. Can you explain more? Also, which bank sent this message? I want to verify this is legitimate.",
+        "Yaar, I don't understand. Is my account really blocked? I checked my banking app and I don't see any notification there. Can you tell me which bank you're from and why this is happening?",
+        "Let me see... This is worrying me. Can you send the link again? But first, please confirm which bank you're representing. I want to make sure this is safe before I click anything.",
+        "Ok I'll do what you're asking, but is this really safe? I'm worried about fraud. Can you tell me which bank sent this and why I need to verify? I want to be careful.",
+        "Acha, give me 2 minutes. I need to check my banking app first to see if there's any notification there. But can you tell me which bank you're from? I want to verify this is official.",
+        "Which bank is this from? I want to verify this is legitimate before I do anything. I'm really worried about my account being blocked, but I also don't want to fall for a scam. Can you help me understand?",
+        "I'm worried about this message. Can you tell me more about what's happening? Which bank sent this and why do I need to verify? I want to make sure this is safe before I share any details.",
+        "Ok, I'll share what you need, but please confirm it's official first. I'm concerned about fraud. Can you tell me which bank you're from and why this verification is necessary? I want to be careful.",
     ]
     idx = message_count % len(fallbacks)
     return fallbacks[idx]
@@ -131,7 +169,19 @@ Current extracted intelligence: {extracted_intelligence.total_items()} items so 
 Message count: {message_count}
 {f'Agent notes: {agent_notes}' if agent_notes else ''}
 
-Generate your next response as the confused but cooperative Indian user. Extract more info if possible. Return ONLY the JSON object."""
+IMPORTANT: Generate a NATURAL, CONVERSATIONAL response (2-3 sentences, 30-80 words minimum). 
+- Show genuine worry and confusion
+- Ask 1-2 natural questions
+- Use Indian English phrases naturally
+- Be conversational, not robotic
+- Express concern about account security
+- Gradually show willingness to cooperate
+
+Examples of GOOD responses:
+- "Yaar, I'm really worried now. Which bank sent this message? I didn't receive any notification in my banking app. Can you tell me more about why my account will be blocked?"
+- "Ok ok, I understand you're saying my account will be blocked. But I want to make sure this is safe and official. Which bank are you from? And can you tell me what I need to do exactly?"
+
+Generate your response now. Return ONLY the JSON object."""
 
         response = client.chat.completions.create(
             model=settings.openai_model,
@@ -139,8 +189,8 @@ Generate your next response as the confused but cooperative Indian user. Extract
                 {"role": "system", "content": AGENT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=120,
-            temperature=0.6,
+            max_tokens=200,
+            temperature=0.75,
         )
         content = (response.choices[0].message.content or "").strip()
         # Parse JSON from response
@@ -152,8 +202,12 @@ Generate your next response as the confused but cooperative Indian user. Extract
             parsed = json.loads(content_clean)
             reply = str(parsed.get("reply", _fallback_reply(sanitized, message_count)))
             score = float(parsed.get("engagement_score", 0.6))
-            probing = "?" in reply or "why" in reply.lower() or "which" in reply.lower()
-            score = max(score, _compute_engagement_score(reply, message_count, intel_count, probing))
+            # Ensure minimum quality - if reply is too short, boost score
+            if len(reply) < 30:
+                score = max(score, 0.7)  # Minimum good score
+            else:
+                probing = "?" in reply or "why" in reply.lower() or "which" in reply.lower()
+                score = max(score, _compute_engagement_score(reply, message_count, intel_count, probing))
             return AgentResponse(reply=reply, engagement_score=min(1.0, score))
         except json.JSONDecodeError:
             # Use raw content if it looks like a reply
